@@ -283,3 +283,16 @@ sudo kubeadm join 192.168.0.104:6443 --token <your-token> --discovery-token-ca-c
 ```
 > From now, Your cluster should be now ready to deploy applications!
 
+## Deploy the application to Kubernetes cluster
+
+1.Write deployment.yaml file for deployment as shown in github
+2. Run Command
+  ```
+     kubectl apply -f deployment.yaml
+  ```
+3.Check If Deploy Complete
+  ``` 
+      kubectl get deployment
+      kubectl get svc
+  ```
+4.Goto 192.168.0.100
