@@ -85,7 +85,8 @@ sudo mv cfssljson_linux-amd64 /usr/local/bin/cfssljson
 
 ##### Install kubectl
 1. Download the binary.
-```wget https://storage.googleapis.com/kubernetes-release/release/v1.12.1/bin/linux/amd64/kubectl
+```
+wget https://storage.googleapis.com/kubernetes-release/release/v1.12.1/bin/linux/amd64/kubectl
 ```
 2. Add the execution permission to the binary.
 ```chmod +x kubectl```
@@ -206,13 +207,16 @@ scp ca.pem kubernetes.pem kubernetes-key.pem pi@192.168.0.113:~
 2. Move the certificates to the configuration directory.
 ```sudo mv ~/ca.pem ~/kubernetes.pem ~/kubernetes-key.pem /etc/etcd```
 3. Download the etcd binaries.
-```wget https://github.com/coreos/etcd/releases/download/v3.3.9/etcd-v3.3.9-linux-amd64.tar.gz
+```
+wget https://github.com/coreos/etcd/releases/download/v3.3.9/etcd-v3.3.9-linux-amd64.tar.gz
 ```
 4. Extract the etcd archive.
-```tar xvzf etcd-v3.3.9-linux-amd64.tar.gz
+```
+tar xvzf etcd-v3.3.9-linux-amd64.tar.gz
 ```
 5. Move the etcd binaries to /usr/local/bin.
-```sudo mv etcd-v3.3.9-linux-amd64/etcd* /usr/local/bin/
+```
+sudo mv etcd-v3.3.9-linux-amd64/etcd* /usr/local/bin/
 ```
 6. Create an etcd systemd unit file.
 ```sudo vim /etc/systemd/system/etcd.service
@@ -283,12 +287,29 @@ sudo kubeadm join 192.168.0.104:6443 --token <your-token> --discovery-token-ca-c
 ```
 > From now, Your cluster should be now ready to deploy applications!
 
+## Set up Load Balancer for client - nginx
+1. Choose the VM in the notebook. For the VM, you can use whatever you would like such as Ubuntu or Debian
+2. After selecting the VM in the VirtualBox, Go to `Settings > Network`. At the `Attached to:` in Adapter 1, Select `Bridged Adapter`
+3. Install nginx
+```
+sudo apt-get update
+sudo apt-get install nginx
+```
+4. In this project root directory, copy `nginx.conf` to `/etc/nginx/nginx.conf`
+5. Remove the default symbolic link in site-enabled folder
+```
+sudo rm /etc/nginx/sites-enabled/default
+```
+6. Restart nginx
+```
+sudo systemctl restart nginx
+```
 ## Deploy the application to Kubernetes cluster
 
-1.Write deployment.yaml file for deployment as shown in github
+1.Write deployment2.yaml file for deployment as shown in github
 2. Run Command
   ```
-     kubectl apply -f deployment.yaml
+     kubectl apply -f deployment2.yaml
   ```
 3.Check If Deploy Complete
   ``` 
