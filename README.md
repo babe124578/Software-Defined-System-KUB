@@ -3,9 +3,6 @@
 **Software-Defined System Term Project:** Build the Kubernetes cluster using Raspberry PI with this project
 From [Github Project](https://github.com/juierror/todolist-microservice)
 
-## Project structure
-- nginx หงิง
-
 ## Topology
 Kubenetes cluster topology 
 
