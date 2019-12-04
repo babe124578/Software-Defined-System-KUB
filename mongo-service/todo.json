@@ -1,0 +1,28 @@
+[
+    {
+        "username" : "jui",
+        "list" : [
+            {
+                "todo" : "int jp final exam",
+                "complete" : false
+            },
+            {
+                "todo" : "wireless 4 dec",
+                "complete" : false
+            }
+        ]
+    },
+    {
+        "username" : "yoss",
+        "list" : [
+            {
+                "todo" : "int jp final exam",
+                "complete" : false
+            },
+            {
+                "todo" : "wireless 4 dec",
+                "complete" : false
+            }
+        ]
+    }
+]
