@@ -14,7 +14,7 @@ Kubenetes cluster topology
 | Master 1 [VM]                            |           192.168.0.121            |
 | Master 2 [VM]                            |           192.168.0.122            |
 | Load Balancer for Master [VM] - HA Proxy |           192.168.0.100            |
-| Worker Node [Raspberry PI]               | 192.168.0.110 - 192.168.0.113.     |
+| Worker Node [Raspberry PI]               | 192.168.0.110 - 192.168.0.113      |
 
 ## Set up Kubernetes cluster
 
@@ -32,8 +32,13 @@ We create multi-master using 2 VMs  The chosen linux distribution for master nod
 > Important:
 > Ensure that each master VM has different hostname and MAC address***
 
-We followed [#this guide](https://blog.inkubate.io/install-and-configure-a-multi-master-kubernetes-cluster-with-kubeadm)
+We followed [# this guide](https://blog.inkubate.io/install-and-configure-a-multi-master-kubernetes-cluster-with-kubeadm)
 
+> Please update and upgrade on all device
+```
+sudo apt-get update
+sudo apt-get upgrade
+```
 #### Install and setup Docker On Master
 1. Get administrator privileges(root).
 ```sudo -s```
@@ -48,8 +53,8 @@ stable"
 4. Update the list of packages.
 ```apt-get update```
 5. Install docker-ce 17.03
-follow this [Link](https://docs.docker.com/install/linux/docker-ce/ubuntu)
-
+if Master follow this [Link](https://docs.docker.com/install/linux/docker-ce/ubuntu)
+  
 #### Install and setup kubeadm, kubelet and kubectl On Master
 1. Add the Google repository key.
 ```curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -```
@@ -66,8 +71,8 @@ deb http://apt.kubernetes.io kubernetes-xenial main
 sed -i '/ swap / s/^/#/' /etc/fstab
 ```
 
-#### Install certificate on all nodes and masters
-##Install cfssl(Cloudfare SSL)
+#### Install client tool
+##### Install cfssl(Cloudfare SSL)
 1. Download the binaries.
 ```wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
 wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
@@ -81,102 +86,203 @@ sudo mv cfssljson_linux-amd64 /usr/local/bin/cfssljson
 4. Verify the installation.
 ```cfssl version```
 
-#### Set up Load Balancer for master - HAProxy
-  1.Install Haproxy
-  ```sudo apt-get update
-     sudo apt-get install haproxy
-  ```
-  2.Edit haproxy.cfg
-  ``` nano /etc/haproxy/haproxy.cfg ```
-  3.Add this configuration parameters to HAProxy config :
-  ```global
-    user haproxy
-    group haproxy
-defaults
-    mode http
-    log global
-    retries 2
-    timeout connect 3000ms
-    timeout server 5000ms
-    timeout client 5000ms
+##### Install kubectl
+1. Download the binary.
+```wget https://storage.googleapis.com/kubernetes-release/release/v1.12.1/bin/linux/amd64/kubectl
+```
+2. Add the execution permission to the binary.
+```chmod +x kubectl```
+3. Move the binary to /usr/local/bin.
+```sudo mv kubectl /usr/local/bin```
+4. Verify the installation.
+```kubectl version```
+
+##### Set up Load Balancer for master - HAProxy
+1. Install HAProxy.
+```sudo apt-get install haproxy```
+2. Configure HAProxy to load balance the traffic between the three Kubernetes master nodes.
+```sudo vim /etc/haproxy/haproxy.cfg
+global
+...
+default
+...
 frontend kubernetes
-    bind (IP OF YOUR LOADBALANCE)
-    option tcplog
-    mode tcp
-    default_backend kubernetes-master-nodes
+bind 192.168.0.100:6443
+option tcplog
+mode tcp
+default_backend kubernetes-master-nodes
+
+
 backend kubernetes-master-nodes
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server k8s-master-0 (IP OF YOUR FIRST MASTER NODE) check fall 3 rise 2. 
-    server k8s-master-1 (IP OF YOUR SECOND MASTER NODE) ccheck fall 3 rise 2
-  ```
-  4. Start HAproxy
-   ```systemctl start haproxy```
-  
-#### Initialize cluster
-
-After load balancer for master nodes was set, the cluster with stacked etcd-control plane can be initialized. The process is based on 2 sources which is [this medium article](https://medium.com/nycdev/k8s-on-pi-9cc14843d43) and [official kubeadm HA cluster guide](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/).
-
-> From now, we assume that master nodes' load balancer is at 192.168.0.104:6443
-
-#### Initialize first master node
-
-1. Init kubernetes cluster
-```sh
-sudo kubeadm init --control-plane-endpoint "192.168.0.104:6443" --upload-certs --token-ttl=0
+mode tcp
+balance roundrobin
+option tcp-check
+server sds-master-121 192.168.0.121:6443 check fall 3 rise 2
+server sds-master-122 192.168.0.122:6443 check fall 3 rise 2
 ```
-2. Setup kubectl
-```sh
-mkdir -p $HOME/.kube
-sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-sudo chown $(id -u):$(id -g) $HOME/.kube/config
+3. Restart HAProxy.
+```sudo systemctl restart haproxy```
+
+##### Generate TLS certificates
+1. Create the certificate authority configuration file.
+```vim ca-config.json
+{
+  "signing": {
+    "default": {
+      "expiry": "8760h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "8760h"
+      }
+    }
+  }
+}
 ```
-3. Install weavenet
-```sh
-kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+2. Create the certificate authority signing request configuration file.
+```vim ca-csr.json
+{
+  "CN": "Kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+  {
+    "C": "IE",
+    "L": "Cork",
+    "O": "Kubernetes",
+    "OU": "CA",
+    "ST": "Cork Co."
+  }
+ ]
+}
 ```
-> If you want to use kubectl on your other machine, use the same config in step 2 to set up kubectl on it.
-
-#### Initialize second master node
-
-Run the following command
-```sh
-sudo kubeadm join 192.168.0.194:6443 --token <your-token> --discovery-token-ca-cert-hash sha256:<your-discovery-token-ca-cert-hash> --control-plane --certificate-key <your-certificate-key>
+3. Generate the certificate authority certificate and private key.
+```cfssl gencert -initca ca-csr.json | cfssljson -bare ca```
+4. Verify that the ca-key.pem and the ca.pem were generated.
+```ls -la```
+5. Create the certificate signing request configuration file.
+```vim kubernetes-csr.json
+{
+  "CN": "kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+  {
+    "C": "IE",
+    "L": "Cork",
+    "O": "Kubernetes",
+    "OU": "Kubernetes",
+    "ST": "Cork Co."
+  }
+ ]
+}
+```
+6. Generate the certificate and private key.
+```cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=192.168.0.121,192.168.0.122,192.168.0.100,127.0.0.1,kubernetes.default \
+-profile=kubernetes kubernetes-csr.json | \
+cfssljson -bare kubernetes
+```
+7. Verify that the kubernetes-key.pem and the kubernetes.pem file were generated.
+```ls -la```
+8. Copy the certificate to each nodes.
+```
+scp ca.pem kubernetes.pem kubernetes-key.pem natthapong@192.168.0.121:~
+scp ca.pem kubernetes.pem kubernetes-key.pem natthapong@192.168.0.122:~
+scp ca.pem kubernetes.pem kubernetes-key.pem pi@192.168.0.110:~
+scp ca.pem kubernetes.pem kubernetes-key.pem pi@192.168.0.111:~
+scp ca.pem kubernetes.pem kubernetes-key.pem pi@192.168.0.112:~
+scp ca.pem kubernetes.pem kubernetes-key.pem pi@192.168.0.113:~
 ```
 
-> Your master nodes should be all set! Try getting nodes status with `kubectl get nodes`
+#### Installing and configuring Etcd on the Master machine
+1. Create a configuration directory for Etcd.
+```sudo mkdir /etc/etcd /var/lib/etcd```
+2. Move the certificates to the configuration directory.
+```sudo mv ~/ca.pem ~/kubernetes.pem ~/kubernetes-key.pem /etc/etcd```
+3. Download the etcd binaries.
+```wget https://github.com/coreos/etcd/releases/download/v3.3.9/etcd-v3.3.9-linux-amd64.tar.gz
+```
+4. Extract the etcd archive.
+```tar xvzf etcd-v3.3.9-linux-amd64.tar.gz
+```
+5. Move the etcd binaries to /usr/local/bin.
+```sudo mv etcd-v3.3.9-linux-amd64/etcd* /usr/local/bin/
+```
+6. Create an etcd systemd unit file.
+```sudo vim /etc/systemd/system/etcd.service
+[Unit]
+Description=etcd
+Documentation=https://github.com/coreos
 
+
+[Service]
+ExecStart=/usr/local/bin/etcd \
+  --name [[your.master.IP]] \
+  --cert-file=/etc/etcd/kubernetes.pem \
+  --key-file=/etc/etcd/kubernetes-key.pem \
+  --peer-cert-file=/etc/etcd/kubernetes.pem \
+  --peer-key-file=/etc/etcd/kubernetes-key.pem \
+  --trusted-ca-file=/etc/etcd/ca.pem \
+  --peer-trusted-ca-file=/etc/etcd/ca.pem \
+  --peer-client-cert-auth \
+  --client-cert-auth \
+  --initial-advertise-peer-urls https://[[your.master.IP]]:2380 \
+  --listen-peer-urls https://[[your.master.IP]]:2380 \
+  --listen-client-urls https://[[your.master.IP]]:2379,http://127.0.0.1:2379 \
+  --advertise-client-urls https://[[your.master.IP]]:2379 \
+  --initial-cluster-token etcd-cluster-0 \
+  --initial-cluster 192.168.0.121=https://192.168.0.121:2380,192.168.0.122=https://192.168.0.122:2380 \
+  --initial-cluster-state new \
+  --data-dir=/var/lib/etcd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+7. Reload the daemon configuration.
+```sudo systemctl daemon-reload```
+8. Enable etcd to start at boot time.
+```sudo systemctl enable etcd```
+9. Start etcd.
+```sudo systemctl start etcd```
+
+#### Initialize master node
+1. Create the configuration file for kubeadm.
+```vim config.yaml
+apiVersion: kubeadm.k8s.io/v1beta1
+kind: ClusterConfiguration
+kubernetesVersion: stable
+apiServer:
+  CertSANs:
+    - 192.168.0.100
+controlPlaneEndpoint: "192.168.0.100:6443"
+etcd:
+  external:
+    endpoints:
+    - https://192.168.0.121:2379
+    - https://192.168.0.122:2379
+    caFile: /etc/etcd/ca.pem
+    certFile: /etc/etcd/kubernetes.pem
+    keyFile: /etc/etcd/kubernetes-key.pem
+```
+2. Initialize the machine as a master node.
+```sudo kubeadm init --config=config.yaml```
+3. Copy the certificates to the other master.(or do 1st and 2nd step in other master)
+```sudo scp -r /etc/kubernetes/pki natthapong@192.168.0.122:~```
 #### Initialize each worker node
-
 Run the following command
 ```sh
 sudo kubeadm join 192.168.0.104:6443 --token <your-token> --discovery-token-ca-cert-hash sha256:<your-discovery-token-ca-cert-hash>
 ```
-
 > From now, Your cluster should be now ready to deploy applications!
-
-## Deploy the application to Kubernetes cluster
-
-1.Install OpenFaas Cli
-  ```
-  curl -sL https://cli.openfaas.com | sudo sh
-  ```
-  
-2. Clone Project From [Github Project](https://github.com/openfaas/faas-netes)
-
-3. Goto Directory Of Project
-
-4. Run Command
-  ```
-     kubectl apply -f namespace.yml
-     kubectl apply -f yaml_armhf/
-  ```
-5.Check If Deploy Complete
-  ``` 
-      kubectl get deploy -n openfaas
-      kubectl get pods --all-namespaces
-  ```
-6.Goto localhost:31112 to SEE UI
-
 
